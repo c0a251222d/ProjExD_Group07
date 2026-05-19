@@ -71,6 +71,20 @@ class Bird():
         self.hyper_life = 500
 
     def update(self, screen):
+        key_lst = pg.key.get_pressed()
+
+        if key_lst[pg.K_LEFT]:
+            self.rect.x -= 5
+
+        if key_lst[pg.K_RIGHT]:
+            self.rect.x += 5
+
+       # 移動できる範囲を制限
+        if self.rect.left < 50:
+            self.rect.left = 50
+        if self.rect.right > 350:
+            self.rect.right = 350
+
         self.vy += self.gravity
         self.rect.y += self.vy
         if self.rect.y >= GROUND + 140:
@@ -143,7 +157,29 @@ class Obstacle(pg.sprite.Sprite):
         if self.rect.right < 0:     #画面外出たら消す
             self.kill()
 
+class Icicle(pg.sprite.Sprite):
+    """
+    上から落ちてくるつらら
+    """
 
+    def __init__(self):
+        super().__init__()
+
+        self.image = pg.Surface((20, 60))
+        self.image.fill((150, 255, 255))
+
+        self.rect = self.image.get_rect()
+
+        self.rect.x = random.randint(50, 330)
+        self.rect.y = 0
+
+        self.vy = random.randint(8, 15)
+
+    def update(self):
+        self.rect.y += self.vy
+
+        if self.rect.top > HEIGHT:
+            self.kill()
 # class Score:
 #     """
 #     打ち落とした爆弾，敵機の数をスコアとして表示するクラス
@@ -391,6 +427,7 @@ def main():
     exps = pg.sprite.Group()
     # emys = pg.sprite.Group()
     obstacle = pg.sprite.Group()
+    icicles = pg.sprite.Group()
 
     life = Life(5)      
     # gravity = pg.sprite.Group()     #課題2 Groupにインスタンスを追加
@@ -401,6 +438,8 @@ def main():
         #障害物
         if tmr % 60 == 0:
             obstacle.add(Obstacle())
+            if tmr % 80 == 0:
+                icicles.add(Icicle())
 
         #ステージ名表示のため一時停止
         if tmr == 0:
@@ -439,7 +478,8 @@ def main():
             pg.display.update()
             time.sleep(3)
 
-        if tmr == 4000:
+        if tmr >= 4000 and tmr % 80 == 0:
+            icicles.add(Icicle())
 
             #障害物も消す
             obstacle.empty()
@@ -545,15 +585,23 @@ def main():
         for obstacles in pg.sprite.spritecollide(bird, obstacle, True):
             exps.add(Explosion(obstacles, 50))
             #こうかとん悲しみエフェクト
-            # bird.change_img(8, screen)  
+            # bird.change_img(8, screen)    
             # score.update(screen)
             life.num -= 1       #ここでlifeを減らす
             pg.display.update()
             if life.num <= 0:
                 time.sleep(2)
                 return  
-
-
+            
+            # つららとの当たり判定
+        for icicle in pg.sprite.spritecollide(bird, icicles, True):
+            exps.add(Explosion(icicle, 50))
+            life.num -= 1
+            pg.display.update()
+                
+            if life.num <= 0:
+                time.sleep(2)
+                return
         maps.update(screen, tmr)
 
         bird.update(screen)
@@ -571,6 +619,8 @@ def main():
         
         obstacle.update()
         obstacle.draw(screen)
+        icicles.update()
+        icicles.draw(screen)
 
         pg.display.update()
         tmr += 1        
