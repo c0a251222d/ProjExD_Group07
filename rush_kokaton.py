@@ -9,6 +9,7 @@ WIDTH = 1100  # ゲームウィンドウの幅
 HEIGHT = 650  # ゲームウィンドウの高さ
 GROUND = 300  # 地面の高さ
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+pg.mixer.init()
 
 
 def check_bound(obj_rct: pg.Rect) -> tuple[bool, bool]:
@@ -231,7 +232,7 @@ class Timer:
     """
     def __init__(self):
         self.font = pg.font.Font(None, 50)
-        self.color = (0, 0, 255)
+        self.color = (255, 255, 0)
         self.value = 0
         self.image = self.font.render(f"Timer: {self.value}", 0, self.color)
         self.rect = self.image.get_rect()
@@ -402,16 +403,16 @@ def main():
                     bird.jumping = True
                     bird.jump_count += 1
 
-        # for obstacles in pg.sprite.spritecollide(bird, obstacle, True):
-        #     exps.add(Explosion(obstacles, 50))
-        #     #こうかとん悲しみエフェクト
-        #     # bird.change_img(8, screen)    
-        #     # score.update(screen)
-        #     life.num -= 1       #ここでlifeを減らす
-        #     pg.display.update()
-        #     if life.num <= 0:
-        #         time.sleep(2)
-        #         return  
+        for obstacles in pg.sprite.spritecollide(bird, obstacle, True):
+            exps.add(Explosion(obstacles, 50))
+            #こうかとん悲しみエフェクト
+            # bird.change_img(8, screen)    
+            # score.update(screen)
+            life.num -= 1       #ここでlifeを減らす
+            pg.display.update()
+            if life.num <= 0:
+                time.sleep(2)
+                return  
             
             # つららとの当たり判定
         for icicle in pg.sprite.spritecollide(bird, icicles, True):
