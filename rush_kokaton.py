@@ -245,31 +245,24 @@ class Platform(pg.sprite.Sprite):
 #         self.image = self.font.render(f"Score: {self.value}", 0, self.color)
 #         screen.blit(self.image, self.rect)
 
-
-# class Bomb(pg.sprite.Sprite):
+# class Laser(pg.sprite.Sprite):
 #     """
 #     爆弾に関するクラス
 #     今回はボスが出してくる攻撃などとして使用
 #     """
-#     colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
 
-#     def __init__(self, emy: "Enemy", bird: Bird):
+#     def __init__(self, boss: "Boss", bird: Bird):
 #         """
 #         爆弾円Surfaceを生成する
 #         引数1 emy：爆弾を投下する敵機
 #         引数2 bird：攻撃対象のこうかとん
 #         """
 #         super().__init__()
-#         rad = random.randint(10, 50)  # 爆弾円の半径：10以上50以下の乱数
-#         self.image = pg.Surface((2*rad, 2*rad))
-#         color = random.choice(__class__.colors)  # 爆弾円の色：クラス変数からランダム選択
-#         pg.draw.circle(self.image, color, (rad, rad), rad)
-#         self.image.set_colorkey((0, 0, 0))
-#         self.rect = self.image.get_rect()
+
 #         # 爆弾を投下するemyから見た攻撃対象のbirdの方向を計算
-#         self.vx, self.vy = calc_orientation(emy.rect, bird.rect)  
-#         self.rect.centerx = emy.rect.centerx
-#         self.rect.centery = emy.rect.centery+emy.rect.height//2
+#         self.vx, self.vy = calc_orientation(boss.rect, bird.rect)  
+#         self.rect.centerx = boss.rect.centerx
+#         self.rect.centery = boss.rect.centery+boss.rect.height//2
 #         self.speed = 6
 
 #     def update(self):
@@ -280,6 +273,7 @@ class Platform(pg.sprite.Sprite):
 #         self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
 #         if check_bound(self.rect) != (True, True):
 #             self.kill()
+
 
 
 # class Beam(pg.sprite.Sprite):
@@ -345,33 +339,92 @@ class Explosion(pg.sprite.Sprite):
             self.kill()
 
 
-# class Enemy(pg.sprite.Sprite):
-#     """
-#     敵機に関するクラス
-#     ボスのクラス（大きさだけいじればいいかな）
-#     """
-#     imgs = [pg.image.load(f"fig/alien{i}.png") for i in range(1, 4)]
+class Boss():
+    """
+    ボスのクラス
+    出現位置から降下させることで、ボス感を出している
+    インターバルはボスのレーザーの判定に使う（今回は違う）
+    """
     
-#     def __init__(self):
-#         super().__init__()
-#         self.image = pg.transform.rotozoom(random.choice(__class__.imgs), 0, 0.8)
-#         self.rect = self.image.get_rect()
-#         self.rect.center = random.randint(0, WIDTH), 0
-#         self.vx, self.vy = 0, +6
-#         self.bound = random.randint(50, HEIGHT//2)  # 停止位置
-#         self.state = "down"  # 降下状態or停止状態
-#         self.interval = random.randint(50, 300)  # 爆弾投下インターバル
+    def __init__(self):
+        super().__init__()
+        # self.image = pg.transform.rotozoom(random.choice(__class__.imgs), 0, 0.8)
+        self.image = pg.image.load("fig/alien1.png")
+        self.image = pg.transform.scale(self.image, (300, 300))
+        self.rect = self.image.get_rect()
+        self.rect.center = (900, 300)
+        self.vx, self.vy = 0, +6
+        self.bound = 330  # 停止位置
+        self.state = "down"  # 降下状態or停止状態
 
-#     def update(self):
-#         """
-#         敵機を速度ベクトルself.vyに基づき移動（降下）させる
-#         ランダムに決めた停止位置_boundまで降下したら，_stateを停止状態に変更する
-#         引数 screen：画面Surface
-#         """
-#         if self.rect.centery > self.bound:
-#             self.vy = 0
-#             self.state = "stop"
-#         self.rect.move_ip(self.vx, self.vy)
+        self.interval = random.randint(50, 300)  # 爆弾投下インターバル
+
+    def update(self, screen):
+        """
+        敵機を速度ベクトルself.vyに基づき移動（降下）させる
+        ランダムに決めた停止位置_boundまで降下したら，_stateを停止状態に変更する
+        引数 screen：画面Surface
+        """
+        if self.rect.centery > self.bound:
+            self.vy = 0
+            self.state = "stop"
+        self.rect.move_ip(self.vx, self.vy)
+
+        screen.blit(self.image, self.rect)
+
+
+class Bomb(pg.sprite.Sprite):
+    """
+    ボスの攻撃の一つ
+    爆弾円を生成し、爆破場所を知らせたのち、爆発画像に切り替える
+    衝突判定は爆発画像から
+    生成場所は、こうかとんが動ける範囲の中でランダムな場所
+    （これは今回はマージできてないので使用できない）
+    爆発中かどうかのステータス：bom_status
+    により衝突判定を切り替える
+    爆発までの時間：bom_timer
+    """
+    def __init__(self, boss: "Boss", bird: Bird, triple = 0):
+        """
+        引数：tripleは、爆弾を三つ生成する際に使用するだけのため
+        初期値を0とし、爆弾を一つ生成する場合には影響を与えない
+        """
+        super().__init__()
+        rad = 40  # 爆弾円の半径
+        self.image = pg.Surface((2*rad, 2*rad))
+        color = (255, 0, 0)  # 爆弾円の色
+        pg.draw.circle(self.image, color, (rad, rad), rad)
+        self.image.set_colorkey((0, 0, 0))
+        self.rect = self.image.get_rect()
+
+        self.rect.center = bird.rect.center
+
+        #こうかとんが動ける範囲をランダムに爆発する
+        self.rect.center = (
+            random.randint(50, 350) + triple,
+            random.randint(50, GROUND + 200)
+            )
+
+        self.bom_timer = 0
+        self.bom_status = "normal"
+
+    def update(self):
+        #爆弾円が表示されて、数秒経ったら爆発画像に切り替える
+
+        self.bom_timer += 1
+        if self.bom_timer >= 200 and self.bom_status == "normal":
+
+            center = self.rect.center
+
+            self.image = pg.image.load(f"fig/explosion.gif")
+            self.rect = self.image.get_rect()
+            self.rect.center = center
+
+            self.bom_status = "explosion"
+
+        if self.bom_timer >= 250:
+            self.bom_status == "normal"
+            self.kill()
 
 
 class Life():
@@ -395,65 +448,6 @@ class Life():
             screen.blit(self.img, (x, y))
 
 
-# class Gravity(pg.sprite.Sprite):
-#     """
-#     今回は、小さい敵と障害物と爆弾を消せる必殺技クラス
-#     """
-#     def __init__(self, life):
-#         super().__init__()      #Groupのために継承
-
-#         self.life = life
-#         self.image = pg.Surface((WIDTH, HEIGHT))
-#         self.image.set_alpha(128)
-#         self.rect = self.image.get_rect()
-
-#     def update(self):
-#         self.life -= 1
-#         if self.life <= 0:
-#             self.kill()
-
-
-# class EMP():
-#     def __init__(self, emys, bombs, screen):
-#         for emy in emys:
-#             emy.interval = float("inf")
-#             emy.image = pg.transform.laplacian(emy.image)
-
-#         for bom in bombs:
-#             bom.speed /= 2
-#             bom.state = "inactive"
-
-#         image = pg.Surface((WIDTH, HEIGHT))
-#         image.fill((255, 255, 0))
-#         image.set_alpha(200)
-
-#         screen.blit(image, [0, 0])
-#         pg.display.update()
-#         time.sleep(0.05)
-
-
-# class Shield(pg.sprite.Sprite):
-#     def __init__(self, life, bird:Bird):
-#         super().__init__()
-#         self.life = life
-
-#         self.image = pg.Surface((20, bird.rect.height * 2))
-#         pg.draw.rect(self.image, (0, 0, 255), (0, 0, 10, bird.rect.height * 2))
-#         self.rect = self.image.get_rect()
-
-#         vx, vy = bird.dire  #向いてる方向のベクトルをvx, vyに代入
-#         self.rect.centerx = bird.rect.centerx + vx * bird.rect.width
-#         self.rect.centery = bird.rect.centery + vy * bird.rect.height
-#         kakudo = math.degrees(math.atan2(-vy, vx))
-#         self.image = pg.transform.rotozoom(self.image, kakudo, 1)
-#         self.image.set_colorkey((0, 0, 0))      #ここに入れないと黒くなる
-
-#     def update(self):
-#         self.life -= 1
-#         if self.life <= 0:
-#             self.kill()
-
-
 def main():
     pg.display.set_caption("走れ！こうかとん")
     screen = pg.display.set_mode((1100, 650))
@@ -466,8 +460,9 @@ def main():
 
     # score = Score()
     bird = Bird()
+    boss = Boss()
 
-    # bombs = pg.sprite.Group()
+    bombs = pg.sprite.Group()
     # beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     # emys = pg.sprite.Group()
@@ -476,10 +471,30 @@ def main():
     icicles = pg.sprite.Group()
 
     life = Life(5)      
+    attack_count = 0
+    bomb_cooldown = 0
     # gravity = pg.sprite.Group()     #課題2 Groupにインスタンスを追加
     # shield = pg.sprite.Group()
     while True:
 
+        bomb_cooldown += 1
+
+
+        if tmr >= 6100:
+
+            #爆弾が画面上になければ、生成する
+            if len(bombs) == 0 and bomb_cooldown >= 200 and attack_count < 3:
+                bombs.add(Bomb(boss, bird))
+                bomb_cooldown = 0
+                attack_count += 1
+
+            #bombの処理　爆発を三回させるかどうか
+            if len(bombs) == 0 and attack_count >= 3:
+                #重なってしまうので、ずれた場所に生成する
+                bombs.add(Bomb(boss, bird, -50))
+                bombs.add(Bomb(boss, bird, 0))
+                bombs.add(Bomb(boss, bird, 50))
+                attack_count = 0
 
         #障害物
         if tmr % 60 == 0:
@@ -604,10 +619,10 @@ def main():
         # if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
         #     emys.add(Enemy())
 
-        # for emy in emys:
-        #     if emy.state == "stop" and tmr%emy.interval == 0:
-        #         # 敵機が停止状態に入ったら，intervalに応じて爆弾投下
-        #         bombs.add(Bomb(emy, bird))
+        # if boss.state == "stop" and tmr%boss.interval == 0:
+        #     # 敵機が停止状態に入ったら，intervalに応じて爆弾投下
+        #     bombs.add(Bomb(boss, bird))
+
 
         # for emy in pg.sprite.groupcollide(emys, beams, True, True).keys():  # ビームと衝突した敵機リスト
         #     exps.add(Explosion(emy, 100))  # 爆発エフェクト
@@ -637,9 +652,18 @@ def main():
         # for bomb in pg.sprite.groupcollide(bombs, gravity, True, False):
         #     exps.add(Explosion(bomb, 50))
 
-        # for bomb in pg.sprite.groupcollide(shield, bombs, True, True):      #課題５　防御壁
-        #     exps.add(Explosion(bomb, 50))
-
+        #グループからbombを取り出して、bom_statusが
+        #"explosion"の時だけ衝突判定させる
+        for bomb in bombs:
+            if bomb.bom_status == "explosion":
+                for bomb in pg.sprite.spritecollide(bird, bombs, True):
+                    exps.add(Explosion(bomb, 50))
+                    life.num -= 1
+                    pg.display.update()
+                    if life.num <= 0:
+                        time.sleep(2)
+                        return  
+            
         for obstacles in pg.sprite.spritecollide(bird, obstacle, True):
             exps.add(Explosion(obstacles, 50))
             #こうかとん悲しみエフェクト
@@ -662,6 +686,9 @@ def main():
                 return
         maps.update(screen, tmr)
 
+        bird.update(screen)
+        if tmr >= 6000:
+            boss.update(screen)
         bird.update(screen, platforms)
 
         # beams.update()
@@ -682,6 +709,9 @@ def main():
         obstacle.draw(screen)
         icicles.update()
         icicles.draw(screen)
+
+        bombs.update()
+        bombs.draw(screen)
 
         pg.display.update()
         tmr += 1        
