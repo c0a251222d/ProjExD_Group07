@@ -443,18 +443,13 @@ class Hp():
         self.rect = self.image.get_rect()
         self.rect.center = (850, 30)
         
-        #本当のHPバー
-        self.image2 = pg.Surface((490, 40))
-        self.image2.fill((255, 0, 0))
-        self.rect2 = self.image2.get_rect()
-        self.rect2.center = (850, 30)
 
         #ボスの必殺技後のダウン状態のためのstatus
         self.hp_status = "normal"
 
-    def update(self, screen, atk):
+    def Damage(self, atk):
         """
-        atkはmainの初期内で定義する
+        atkはmainの衝突判定で定義する
         """
         if self.hp < 0:
             self.hp = 0
@@ -464,6 +459,8 @@ class Hp():
         elif self.hp_status == "down":
             self.hp -= atk * 5
 
+    def update(self, screen):
+
         parcent_hp = self.hp / self.max_hp
         current_hp = 490 * parcent_hp
 
@@ -471,9 +468,16 @@ class Hp():
         if self.hp_status == "normal":
             self.image2.fill((255, 0, 0))
         if self.hp_status == "down":
-            self.image2.fill((0, 255, 0))
+            self.image2.fill((0, 0, 255))
         self.rect2 = self.image2.get_rect()
         self.rect2.center = (850, 30)
+
+        if self.hp_status == "down":
+            self.down_time += 1
+
+        if self.down_time >= 300:
+            self.hp_status = "normal"
+            self.down_time = 0
 
         screen.blit(self.image, self.rect)
         screen.blit(self.image2, self.rect2)
@@ -518,7 +522,7 @@ def main():
 
 
     bombs = pg.sprite.Group()
-    # beams = pg.sprite.Group()
+    beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     # emys = pg.sprite.Group()
     obstacle = pg.sprite.Group()
@@ -528,6 +532,7 @@ def main():
     life = Life(5)      
     attack_count = 0
     bomb_cooldown = 0
+    boss_down = 0
     # gravity = pg.sprite.Group()     #課題2 Groupにインスタンスを追加
     # shield = pg.sprite.Group()
     while True:
@@ -536,20 +541,29 @@ def main():
 
 
         if tmr >= 6100:
+            if hp.hp_status == "normal":
 
-            #爆弾が画面上になければ、生成する
-            if len(bombs) == 0 and bomb_cooldown >= 200 and attack_count < 3:
-                bombs.add(Bomb(boss, bird))
-                bomb_cooldown = 0
-                attack_count += 1
+                #爆弾が画面上になければ、生成する
+                if len(bombs) == 0 and bomb_cooldown >= 200 and attack_count < 3:
+                    bombs.add(Bomb(boss, bird))
+                    bomb_cooldown = 0
+                    attack_count += 1
 
-            #bombの処理　爆発を三回させるかどうか
-            if len(bombs) == 0 and attack_count >= 3:
-                #重なってしまうので、ずれた場所に生成する
-                bombs.add(Bomb(boss, bird, -50))
-                bombs.add(Bomb(boss, bird, 0))
-                bombs.add(Bomb(boss, bird, 50))
-                attack_count = 0
+                #bombの処理　爆発を三回させるかどうか
+                if len(bombs) == 0 and attack_count >= 3:
+                    #重なってしまうので、ずれた場所に生成する
+                    bombs.add(Bomb(boss, bird, -50))
+                    bombs.add(Bomb(boss, bird, 0))
+                    bombs.add(Bomb(boss, bird, 50))
+                    attack_count = 0
+                    hp.hp_status = "down"
+                    boss_down = 1
+
+            if hp.hp_status == "down":
+                boss_down += 1
+                if boss_down >= 300:
+                    hp.hp_status = "normal"
+                    boss_down = 0
 
         #障害物
         if tmr % 60 == 0:
@@ -668,6 +682,11 @@ def main():
             if life.num <= 0:
                 time.sleep(2)
                 return
+            
+        for beams in pg.sprite.spritecollide(boss, beams, True):
+            exps.add(Explosion(beams, 50))
+            hp.damage(3)
+            
         
 
 
