@@ -61,11 +61,8 @@ class Bird():
         self.jumping = False    #ジャンプ中か？の判定のため。初期はジャンプしていない
         self.jump_count = 0      # 現在のジャンプ回数
         self.max_jump = 2        # 最大2段ジャンプ
-
-        #こうかとんの無敵技用
-
-        self.state = "normal"
-        self.hyper_life = 500
+        self.dire = (1, 0)
+        self.beam_cooldown = 0
 
     def update(self, screen, platforms):
         key_lst = pg.key.get_pressed()
@@ -252,12 +249,45 @@ class Timer:
         self.image = self.font.render(f"Timer: {self.value}", 0, self.color)
         self.rect = self.image.get_rect()
         self.rect.center = 100, HEIGHT-50
-
     def update(self, screen: pg.Surface, tmr):
         if (tmr%50 == 0 and tmr > 0):
             self.value += 1
         self.image = self.font.render(f"Timer: {self.value}", 0, self.color)
         screen.blit(self.image, self.rect)
+
+
+class Beam(pg.sprite.Sprite):
+    """
+    ビームに関するクラス
+    ボス倒すための攻撃手段
+    障害物に当たるとビームは消滅
+    """
+    def __init__(self, bird: Bird, angle0 = 0):     #課題６でangle0を追加
+        """
+        ビーム画像Surfaceを生成する
+        引数 bird：ビームを放つこうかとん
+        """
+        super().__init__()
+
+        self.vx, self.vy = bird.dire
+        angle = math.degrees(math.atan2(-self.vy, self.vx)) + angle0        #ビームの回転角度に加算
+        self.image = pg.transform.rotozoom(pg.image.load(f"fig/beam.png"), angle, 1.0)
+        self.vx = math.cos(math.radians(angle))
+        self.vy = -math.sin(math.radians(angle))
+        self.rect = self.image.get_rect()
+        self.rect.centery = bird.rect.centery+bird.rect.height*self.vy
+        self.rect.centerx = bird.rect.centerx+bird.rect.width*self.vx
+        self.speed = 10
+
+    def update(self):
+         """
+         ビームを速度ベクトルself.vx, self.vyに基づき移動させる
+         引数 screen：画面Surface
+         """
+         self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
+         if check_bound(self.rect) != (True, True):
+             self.kill()
+
 
 
 class Explosion(pg.sprite.Sprite):
@@ -430,7 +460,7 @@ def main():
     screen = pg.display.set_mode((1100, 650))
     clock  = pg.time.Clock()
     move = 0
-    tmr = 4000
+    tmr = 0
     maps = Map()    #マップを切り替えるため
     x = 0 #練習5
 
@@ -441,7 +471,7 @@ def main():
     hp = Hp()
 
     bombs = pg.sprite.Group()
-    # beams = pg.sprite.Group()
+    beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     obstacle = pg.sprite.Group()
     beam_ene = pg.sprite.Group()
@@ -564,26 +594,101 @@ def main():
         for event in pg.event.get():
             if event.type == pg.QUIT: return
 
-            if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:    #ジャンプ
-                # 2回までジャンプ可能
-                if bird.jump_count < bird.max_jump:
-                    bird.vy = -15
-                    bird.jumping = True
-                    bird.jump_count += 1
-                    
+            if event.type == pg.KEYDOWN:
+                # スペースキーでジャンプ（独立した判定）
+                if event.key == pg.K_SPACE:
+                    if bird.jump_count < bird.max_jump:
+                        bird.vy = -15
+                        bird.jumping = True
+                        bird.jump_count += 1
+                
+                if event.key == pg.K_x: 
+                   if bird.beam_cooldown == 0:  # タイマーが0のときだけ発射可能
+                        beams.add(Beam(bird)) 
+                        bird.beam_cooldown = 150
+                   
+        for event in pg.event.get():
+            if event.type == pg.QUIT: return
+        for obst in pg.sprite.groupcollide(obstacle, beams, True, True).keys():
+            exps.add(Explosion(obst, 50))  # 障害物の位置に爆発エフェクトを発生させる
+        
+                
+                     
 
-        #グループからbombを取り出して、bom_statusが
-        #"explosion"の時だけ衝突判定させる
-        for bomb in bombs:
-            if bomb.bom_status == "explosion":
-                for bomb in pg.sprite.spritecollide(bird, bombs, True):
-                    exps.add(Explosion(bomb, 50))
-                    life.num -= 1
-                    pg.display.update()
-                    if life.num <= 0:
-                        time.sleep(2)
-                        return  
-            
+        
+        # for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
+        #     if bird.state == "hyper":       #課題４の無敵時間判定のために条件分岐
+        #         exps.add(Explosion(bomb, 50))
+        #         score.value += 1
+        #     else:
+        #         bird.change_img(8, screen)  # こうかとん悲しみエフェクト
+        #         score.update(screen)
+        #         life.num -= 1       #課題１
+        #         pg.display.update()
+        #         if life.num <= 0:
+        #             time.sleep(2)
+        #             return  
+
+        #     if event.type == pg.KEYDOWN and event.key == pg.K_RETURN:       #課題2の重力場判定
+        #         if score.value >= 10:      #scoreクラスの中にvalueという名前で書かれていたため
+        #             gravity.add(Gravity(400))
+        #             score.value -= 10       #見せるために一時的に10にしているだけだからあとで200に変えて
+
+        #     if event.type == pg.KEYDOWN and event.key == pg.K_e:        #課題３
+        #         if score.value >= 20:
+        #             EMP(emys, bombs, screen)
+        #             score.value -= 20
+
+        #     if event.type == pg.KEYDOWN and event.key == pg.K_RSHIFT:   #課題４
+        #         if score.value >= 10:         #これも課題のため10にしておくけど、100に戻しておいて
+        #             bird.state = "hyper"
+        #             bird.hyper_life = 500
+        #             score.value -= 10
+
+        #     if event.type == pg.KEYDOWN and event.key == pg.K_s:    #課題５
+        #         if score.value >= 0 and len(shield) == 0:
+        #             shield.add(Shield(400, bird))
+        #             score.value -= 0
+
+        # if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
+        #     emys.add(Enemy())
+
+        # for emy in emys:
+        #     if emy.state == "stop" and tmr%emy.interval == 0:
+        #         # 敵機が停止状態に入ったら，intervalに応じて爆弾投下
+        #         bombs.add(Bomb(emy, bird))
+
+        #for emy in pg.sprite.groupcollide(emys, beams, True, True).keys():  # ビームと衝突した敵機リスト
+        #     exps.add(Explosion(emy, 100))  # 爆発エフェクト
+        #     score.value += 10  # 10点アップ
+        #     bird.change_img(6, screen)  # こうかとん喜びエフェクト
+
+        # for bomb in pg.sprite.groupcollide(bombs, beams, True, True).keys():  # ビームと衝突した爆弾リスト
+        #     exps.add(Explosion(bomb, 50))  # 爆発エフェクト
+        #     score.value += 1  # 1点アップ
+
+        # for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
+        #     if bird.state == "hyper":       #課題４の無敵時間判定のために条件分岐
+        #         exps.add(Explosion(bomb, 50))
+        #         score.value += 1
+        #     else:
+        #         bird.change_img(8, screen)  # こうかとん悲しみエフェクト
+        #         score.update(screen)
+        #         life.num -= 1       #課題１
+        #         pg.display.update()
+        #         if life.num <= 0:
+        #             time.sleep(2)
+        #             return     
+
+        # for emy in pg.sprite.groupcollide(emys, gravity, True, False).keys():  # 重力場と敵機の衝突判定
+        #     exps.add(Explosion(emy, 100))  # 爆発エフェクト
+
+        # for bomb in pg.sprite.groupcollide(bombs, gravity, True, False):
+        #     exps.add(Explosion(bomb, 50))
+
+        # for bomb in pg.sprite.groupcollide(shield, bombs, True, True):      #課題５　防御壁
+        #     exps.add(Explosion(bomb, 50))
+
         for obstacles in pg.sprite.spritecollide(bird, obstacle, True):
             exps.add(Explosion(obstacles, 50))
             #こうかとん悲しみエフェクト
@@ -616,11 +721,12 @@ def main():
         maps.update(screen, tmr)
 
       
-
         bird.update(screen, platforms)
         if tmr >= 6000:
             boss.update(screen)
             hp.update(screen)
+        beams.update()
+        beams.draw(screen)
         exps.update()
         exps.draw(screen)
         timer.update(screen, tmr)  # timerの更新
@@ -639,6 +745,8 @@ def main():
         bombs.update()
         bombs.draw(screen)
 
+        if bird.beam_cooldown > 0:
+            bird.beam_cooldown -= 1
         pg.display.update()
         tmr += 1        
         clock.tick(50) #FPSはこれ フレーム数。50フレームで1秒を表すということ
