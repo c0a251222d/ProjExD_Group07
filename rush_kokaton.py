@@ -9,6 +9,7 @@ WIDTH = 1100  # ゲームウィンドウの幅
 HEIGHT = 650  # ゲームウィンドウの高さ
 GROUND = 300  # 地面の高さ
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+pg.mixer.init()
 
 
 def check_bound(obj_rct: pg.Rect) -> tuple[bool, bool]:
@@ -58,13 +59,15 @@ class Bird():
         self.vy = 0     #縦方向速度
         self.gravity = 1
         self.jumping = False    #ジャンプ中か？の判定のため。初期はジャンプしていない
+        self.jump_count = 0      # 現在のジャンプ回数
+        self.max_jump = 2        # 最大2段ジャンプ
 
         #こうかとんの無敵技用
 
         self.state = "normal"
         self.hyper_life = 500
 
-    def update(self, screen):
+    def update(self, screen, platforms):
         key_lst = pg.key.get_pressed()
 
         if key_lst[pg.K_LEFT]:
@@ -85,6 +88,17 @@ class Bird():
             self.rect.y = GROUND + 140
             self.vy = 0
             self.jumping = False
+            self.jump_count = 0   # ジャンプ回数リセット
+
+        # 足場判定
+        for platform in platforms:
+         # 上から落ちてきたときのみ乗れる
+            if self.rect.colliderect(platform.rect):
+                if self.vy >= 0 and self.rect.bottom <= platform.rect.bottom:
+                    self.rect.bottom = platform.rect.top
+                    self.vy = 0
+                    self.jumping = False
+                    self.jump_count = 0   # 足場に乗ったらリセット
 
         screen.blit(self.rk_img, self.rect)
 
@@ -156,13 +170,64 @@ class Obstacle(pg.sprite.Sprite):
         self.rect.x += self.vx
         if self.rect.right < 0:     #画面外出たら消す
             self.kill()
+
+
+class Icicle(pg.sprite.Sprite):
+    """
+    上から落ちてくるつらら
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        self.image = pg.Surface((20, 60))
+        self.image.fill((150, 255, 255))
+
+        self.rect = self.image.get_rect()
+
+        self.rect.x = random.randint(50, 330)
+        self.rect.y = 0
+
+        self.vy = random.randint(8, 15)
+
+    def update(self):
+        self.rect.y += self.vy
+
+        if self.rect.top > HEIGHT:
+            self.kill()
+
+
+class Platform(pg.sprite.Sprite):
+    """
+    こうかとんが乗れる足場
+    """
+    def __init__(self, x, y, w=180, h=20):
+        super().__init__()
+
+        self.image = pg.Surface((w, h))
+        self.image.fill((139, 69, 19))  # 茶色
+
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+
+        self.vx = -6   # 背景に合わせて左へ移動
+
+    def update(self):
+        self.rect.x += self.vx
+
+        # 画面外に出たら消す
+        if self.rect.right < 0:
+            self.kill()
+
+
 class Beam_en(pg.sprite.Sprite): 
     """
     敵のビーム障害物
     """
     def __init__(self):
         super().__init__()
-        self.image = pg.image.load("fig/beam(enemy).png")
+        self.image = pg.image.load("fig/beam.png")
         self.image = pg.transform.flip(self.image, True, False)
         self.rect = self.image.get_rect()
 
@@ -175,7 +240,25 @@ class Beam_en(pg.sprite.Sprite):
         self.rect.x += self.vx
         if self.rect.right < 0:
             self.kill()
-            
+
+class Timer:
+    """
+    時間表示
+    """
+    def __init__(self):
+        self.font = pg.font.Font(None, 50)
+        self.color = (255, 255, 0)
+        self.value = 0
+        self.image = self.font.render(f"Timer: {self.value}", 0, self.color)
+        self.rect = self.image.get_rect()
+        self.rect.center = 100, HEIGHT-50
+
+    def update(self, screen: pg.Surface, tmr):
+        if (tmr%50 == 0 and tmr > 0):
+            self.value += 1
+        self.image = self.font.render(f"Timer: {self.value}", 0, self.color)
+        screen.blit(self.image, self.rect)
+
 
 class Explosion(pg.sprite.Sprite):
     """
@@ -347,12 +430,12 @@ def main():
     screen = pg.display.set_mode((1100, 650))
     clock  = pg.time.Clock()
     move = 0
-    tmr = 0
+    tmr = 4000
     maps = Map()    #マップを切り替えるため
     x = 0 #練習5
 
 
-    # score = Score()
+    timer = Timer()
     bird = Bird()
     boss = Boss()
     hp = Hp()
@@ -360,13 +443,11 @@ def main():
     bombs = pg.sprite.Group()
     # beams = pg.sprite.Group()
     exps = pg.sprite.Group()
-    # emys = pg.sprite.Group()
     obstacle = pg.sprite.Group()
     beam_ene = pg.sprite.Group()
     life = Life(1000)      
     platforms = pg.sprite.Group()
     icicles = pg.sprite.Group()
-
     life = Life(5)      
     attack_count = 0
     bomb_cooldown = 0
@@ -398,6 +479,15 @@ def main():
             obstacle.add(Obstacle())
         if tmr % 50 ==0 and tmr >= 4000:
             beam_ene.add(Beam_en())
+        # 夕方ステージだけつらら生成
+        if 2000 <= tmr < 4000 and tmr % 80 == 0:
+            icicles.add(Icicle())
+            if tmr % 80 == 0:
+                icicles.add(Icicle())
+        # 足場生成
+        if tmr % 180 == 0:
+            y = random.randint(250, 450)
+            platforms.add(Platform(WIDTH, y))
 
 
         #ステージ名表示のため一時停止
@@ -405,6 +495,7 @@ def main():
         if tmr == 0:
             bg1_img = pg.image.load("fig/pg2_bg.png")
             screen.blit(bg1_img, (0, 0))
+            pg.mixer.music.load("sounds/stage1~2.mp3") # 音源の読み込み
 
             title_shade = pg.Surface((430, 150))
             title_shade.fill((0, 0, 0))
@@ -415,9 +506,11 @@ def main():
             screen.blit(txt, (400, 300))
             pg.display.update()
             time.sleep(3)
+            pg.mixer.music.play(-1) # bgmの再生
 
         if tmr == 2000:
             #初期設定に戻す
+            pg.mixer.music.stop() # bgmの停止
             bird.rect.x = 50
             bird.rect.y = GROUND + 140
             bird.vy = 0
@@ -437,8 +530,17 @@ def main():
             screen.blit(txt, (400, 300))
             pg.display.update()
             time.sleep(3)
-        
+            pg.mixer.music.load("sounds/stage1~2.mp3")
+            pg.mixer.music.play(-1) # bgmの再生
+
         if tmr == 4000:
+        #初期設定に戻す
+            pg.mixer.music.stop() # bgmの停止
+            bird.rect.x = 50
+            bird.rect.y = GROUND + 140
+            bird.vy = 0
+            bird.jumping = False
+
             #障害物も消す
             obstacle.empty()
             #背景がステージコールの時に反映されないからここで
@@ -454,17 +556,19 @@ def main():
             screen.blit(txt, (400, 300))
             pg.display.update()
             time.sleep(3)
+            pg.mixer.music.load("sounds/stage3.mp3") # 音源の読み込み
+            pg.mixer.music.play(-1)
+            
 
         key_lst = pg.key.get_pressed()
         for event in pg.event.get():
             if event.type == pg.QUIT: return
 
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:    #ジャンプ
-                if bird.jumping == False:
-                    #どれだけ高くジャンプするのか？
+                # 2回までジャンプ可能
+                if bird.jump_count < bird.max_jump:
                     bird.vy = -15
                     bird.jumping = True
-
                     bird.jump_count += 1
                     
 
@@ -490,6 +594,17 @@ def main():
             if life.num <= 0:
                 time.sleep(2)
                 return  
+
+            # つららとの当たり判定
+        for icicle in pg.sprite.spritecollide(bird, icicles, True):
+            exps.add(Explosion(icicle, 50))
+            life.num -= 1
+            pg.display.update()
+                
+            if life.num <= 0:
+                time.sleep(2)
+                return
+
         for beam_en in pg.sprite.spritecollide(bird, beam_ene, True):
             exps.add(Explosion(beam_en, 50))
             life.num -= 1
@@ -506,14 +621,18 @@ def main():
         if tmr >= 6000:
             boss.update(screen)
             hp.update(screen)
-
         exps.update()
         exps.draw(screen)
-        # score.update(screen)  
+        timer.update(screen, tmr)  # timerの更新
         life.update(screen)
+
+        platforms.update()
+        platforms.draw(screen)
         
         obstacle.update()
         obstacle.draw(screen)
+        icicles.update()
+        icicles.draw(screen)
         beam_ene.update()
         beam_ene.draw(screen)
 
